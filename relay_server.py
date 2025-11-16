@@ -96,6 +96,21 @@ class RelayServer:
             # Send 4-byte length prefix + message
             msg_len = struct.pack('!I', len(message))
             client_socket.sendall(msg_len + message)
+            
+            # Log message type for debugging
+            if message.startswith(b"SESSION:"):
+                print(f"[→] Sent SESSION ID to client")
+            elif message == b"JOINED":
+                print(f"[→] Sent JOINED confirmation to client")
+            elif message == b"READY":
+                print(f"[→] Sent READY signal to client")
+            elif message.startswith(b"ERROR:"):
+                print(f"[→] Sent ERROR to client")
+            elif message.startswith(b"DH_KEY:"):
+                print(f"[→] Forwarding DH public key ({len(message)} bytes)")
+            else:
+                print(f"[→] Forwarding encrypted message ({len(message)} bytes)")
+            
             return True
         except Exception as e:
             print(f"[!] Error sending message: {e}")
@@ -122,6 +137,17 @@ class RelayServer:
                     return None
                 message += chunk
             
+            # Log received message type for debugging
+            if message == b"CREATE":
+                print(f"[←] Received CREATE command")
+            elif message.startswith(b"JOIN:"):
+                session_id = message.decode('utf-8').split(":", 1)[1]
+                print(f"[←] Received JOIN command for session {session_id}")
+            elif message.startswith(b"DH_KEY:"):
+                print(f"[←] Received DH public key ({len(message)} bytes)")
+            else:
+                print(f"[←] Received encrypted message ({len(message)} bytes)")
+            
             return message
         except Exception as e:
             print(f"[!] Error receiving message: {e}")
@@ -145,6 +171,7 @@ class RelayServer:
                 # Create new session
                 session_id = self.create_session(client_socket, address)
                 self.send_message(client_socket, f"SESSION:{session_id}".encode('utf-8'))
+                print(f"[*] Client {address} is now waiting for another client to join session {session_id}")
             
             elif command_str.startswith("JOIN:"):
                 # Join existing session
@@ -155,8 +182,10 @@ class RelayServer:
                     with self.sessions_lock:
                         session = self.sessions.get(session_id)
                         if session and session.is_full():
+                            print(f"[*] Session {session_id} is now full - notifying both clients")
                             for sock, _ in session.clients:
                                 self.send_message(sock, b"READY")
+                            print(f"[*] Session {session_id} ready for key exchange")
                 else:
                     self.send_message(client_socket, b"ERROR:Session not found or full")
                     print(f"[!] Client {address} failed to join session {session_id}")
@@ -166,6 +195,7 @@ class RelayServer:
                 return
             
             # Forward messages between clients
+            print(f"[*] Entering message relay mode for session {session_id}")
             while True:
                 message = self.receive_message(client_socket)
                 if not message:
@@ -179,11 +209,14 @@ class RelayServer:
                         other_client = session.get_other_client(client_socket)
                         if other_client:
                             # Forward the encrypted message
+                            print(f"[⇄] Relaying message from {address} to other client in session {session_id}")
                             if not self.send_message(other_client, message):
                                 print(f"[!] Failed to forward message in session {session_id}")
                                 break
                         else:
                             print(f"[!] No other client in session {session_id}")
+                    else:
+                        print(f"[!] Session {session_id} not found")
         
         except Exception as e:
             print(f"[!] Error handling client {address}: {e}")
