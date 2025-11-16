@@ -252,6 +252,14 @@ class ChatClient:
             print("[!] Invalid choice")
             return
         
+        # Wait for READY signal from server
+        print("[*] Waiting for session to be ready...")
+        ready_msg = self.receive_message()
+        if not ready_msg or ready_msg != b"READY":
+            print("[!] Failed to receive ready signal from server")
+            return
+        print("[+] Both clients connected!")
+        
         # Perform Diffie-Hellman key exchange
         if not self.perform_key_exchange(is_initiator):
             return

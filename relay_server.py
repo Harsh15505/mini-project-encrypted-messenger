@@ -87,6 +87,10 @@ class RelayServer:
             if session and not session.is_full():
                 session.add_client(client_socket, address)
                 print(f"[+] Client {address} joined session {session_id}")
+                # Notify both clients that session is ready
+                if session.is_full():
+                    for sock, _ in session.clients:
+                        self.send_message(sock, b"READY")
                 return True
             return False
     
